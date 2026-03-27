@@ -33,7 +33,7 @@ class WomenSafetyChatbot:
             
             # Initialize ChromaDB for RAG
             self.chroma_client = chromadb.PersistentClient(path=chroma_path)
-            self.collection = self.chroma_client.get_collection("women_safety_laws")
+            self.collection = self.chroma_client.get_or_create_collection("women_safety_laws")
 
             # 🌟 COMPREHENSIVE KEYWORD LIST
             self.safety_keywords = set([

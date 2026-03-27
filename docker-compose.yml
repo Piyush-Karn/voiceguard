@@ -1,0 +1,30 @@
+services:
+  voiceguard:
+    build:
+      context: .
+      args:
+        - VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+    ports:
+      - "7860:7860"
+    environment:
+      - PORT=7860
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB_NAME=${MONGO_DB_NAME}
+      - CLOUDINARY_URL=${CLOUDINARY_URL}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - MODEL_ID=${MODEL_ID}
+    volumes:
+      - ./temp_uploads:/app/temp_uploads
+      - ./evidence:/app/evidence
+      - ./chroma_db:/app/chroma_db
+    restart: always
+
+# Ensure volumes exist locally
+# volumes:
+#   temp_uploads:
+#   evidence:
+#   chroma_db:

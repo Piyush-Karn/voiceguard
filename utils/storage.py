@@ -6,11 +6,14 @@ import logging
 
 # Configure Cloudinary
 # This relies on the environment variables being loaded by the main app
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET")
-)
+if os.getenv("CLOUDINARY_URL"):
+    cloudinary.config(cloudinary_url=os.getenv("CLOUDINARY_URL"))
+else:
+    cloudinary.config(
+        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+        api_key=os.getenv("CLOUDINARY_API_KEY"),
+        api_secret=os.getenv("CLOUDINARY_API_SECRET")
+    )
 
 def upload_evidence_to_cloudinary(file_path, user_id, file_name):
     """

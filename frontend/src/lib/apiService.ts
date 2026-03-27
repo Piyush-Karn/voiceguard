@@ -1,7 +1,7 @@
 // lib/apiService.ts
 
 // Fallback to localhost if not specified in environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'; 
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''; 
 
 // --- Monitoring & SMS Endpoints ---
 // REMOVED IN FAVOR OF CLIENT-SIDE MONITORING

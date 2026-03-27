@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # --- Local Utils Imports ---
 # from utils.sos import sos # Removed SMS feature
@@ -62,11 +64,7 @@ class SosRequest(BaseModel):
 # -----------------------------
 # API ROUTES
 # -----------------------------
-
-@app.get("/")
-async def root():
-    """Root endpoint to check if the API is running."""
-    return {"message": "VoiceGuard API is running."}
+# Root route removed to allow static frontend serving from "/"
 
 # User contact management and SOS removed as requested.
 
@@ -179,10 +177,26 @@ async def clear_history_route(data: ClearHistoryRequest):
 
 
 # -----------------------------
+# FRONTEND SERVING (For Docker/Production)
+# -----------------------------
+# Mount the built frontend directory if it exists
+frontend_dist_path = os.path.join(os.getcwd(), "frontend", "dist")
+if os.path.exists(frontend_dist_path):
+    app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="frontend")
+    
+    # Catch-all route to serve index.html for SPA routing
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        return FileResponse(os.path.join(frontend_dist_path, "index.html"))
+else:
+    logging.warning(f"Frontend dist not found at {frontend_dist_path}. Backend will only serve API.")
+
+
+# -----------------------------
 # MAIN ENTRY POINT
 # -----------------------------
 if __name__ == "__main__":
     import uvicorn
     # Required for multiprocessing to work correctly on some platforms
     multiprocessing.freeze_support()
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 7860)))
