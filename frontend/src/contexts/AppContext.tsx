@@ -135,8 +135,8 @@ const translations: Record<Language, Record<string, string>> = {
     step2_desc: "Advanced ML models detect distress patterns, threats, and violence indicators",
     step3_title: "Smart Response",
     step3_desc: "Contextual escalation based on threat level and user safety",
-    step4_title: "Immediate Help",
-    step4_desc: "Connect to local authorities, NGOs, and support networks instantly",
+    step4_title: "Resource Support",
+    step4_desc: "Access local authorities, NGOs, and support networks through our unified resources locker",
     
     // Legal Section
     legal_title: "Legal Guidance (India)",

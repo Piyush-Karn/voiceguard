@@ -1,79 +1,136 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, UserPlus, Upload, Phone } from 'lucide-react';
+import { Mic, MicOff, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useUser } from "@clerk/clerk-react"; // 👈 Import Clerk hook
-import { 
-  startMonitoring, 
-  stopMonitoring, 
-  activateSOS, 
-  uploadEvidence,
-  addTrustedContact 
-} from '@/lib/apiService';
+import { useUser } from "@clerk/clerk-react"; 
+import { uploadEvidence } from '@/lib/apiService';
+
+const THRESHOLD = 0.05; // 👈 Volume threshold for "threat"
+const MONITOR_INTERVAL = 1000; // 👈 Check volume every second
 
 const Demo = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [contactNumber, setContactNumber] = useState('');
+  const [volume, setVolume] = useState(0);
   const { toast } = useToast();
-  const { user } = useUser(); // 👈 Get current user details
+  const { user } = useUser();
 
-  // --- Recording Handler ---
-  const handleRecording = async () => {
-    if (isLoading || !user) return; // 👈 Check for user
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const intervalRef = useRef<number | null>(null);
 
-    setIsLoading(true);
+  // --- Monitoring Logic ---
+  const startClientMonitoring = async () => {
+    if (!user) return;
     try {
-      if (isRecording) {
-        await stopMonitoring(); 
-        toast({
-          title: 'Recording Stopped',
-          description: 'Audio monitoring has been safely shut down.',
-        });
-      } else {
-        await startMonitoring(user.id); // 👈 Pass user.id
-        toast({
-          title: 'Recording Started',
-          description: 'Background audio monitoring is now active.',
-        });
-      }
-      setIsRecording(!isRecording);
-    } catch (error: any) {
-      console.error('Monitoring Error:', error);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Setup Analyser
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      audioContextRef.current = audioCtx;
+      analyserRef.current = analyser;
+
+      // Setup Recorder
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+        if (chunksRef.current.length > 0) {
+          const blob = new Blob(chunksRef.current, { type: 'audio/wav' });
+          const file = new File([blob], `monitored_audio_${Date.now()}.wav`, { type: 'audio/wav' });
+          
+          // Mimic FileList for apiService
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          
+          try {
+            await uploadEvidence(user.id, dataTransfer.files);
+            toast({
+              title: "Audio Saved",
+              description: "Monitored audio segment uploaded successfully.",
+            });
+          } catch (err) {
+            console.error("Upload failed", err);
+          }
+          chunksRef.current = [];
+        }
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      // Volume monitoring interval
+      intervalRef.current = window.setInterval(() => {
+        if (!analyserRef.current) return;
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        setVolume(rms);
+
+        if (rms > THRESHOLD) {
+          // In a real app, we'd trigger a specific incident here.
+          // For the demo, we just show it's working.
+          console.log("High volume detected!");
+        }
+      }, MONITOR_INTERVAL);
+
       toast({
-        title: 'Action Failed',
-        description: `Could not complete monitoring action: ${error.message}`,
+        title: 'Monitoring Started',
+        description: 'Client-side background audio monitoring is now active.',
+      });
+
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Mic Access Failed',
+        description: 'Please ensure microphone permissions are granted.',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // --- Emergency Handler ---
-  const handleEmergency = async () => {
-    if (isLoading || !user) return;
+  const stopClientMonitoring = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    setIsRecording(false);
+    setVolume(0);
+    toast({
+      title: 'Monitoring Stopped',
+      description: 'Audio monitoring has been shut down.',
+    });
+  };
 
-    setIsLoading(true);
-    try {
-      await activateSOS(user.id);  // 👈 Pass user.id
-      toast({
-        title: 'Emergency SOS Activated',
-        description: 'Notifying trusted contacts and emergency services.',
-        variant: 'destructive',
-      });
-    } catch (error: any) {
-      console.error('SOS Error:', error);
-      toast({
-        title: 'SOS Failed',
-        description: `Could not activate SOS: ${error.message}`,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+  const handleRecordingToggle = () => {
+    if (isRecording) {
+      stopClientMonitoring();
+    } else {
+      startClientMonitoring();
     }
   };
   
@@ -84,7 +141,6 @@ const Demo = () => {
 
     setIsLoading(true);
     try {
-      // 👈 Pass user.id to upload function
       const result = await uploadEvidence(user.id, files); 
       toast({
         title: 'Upload Successful',
@@ -103,41 +159,6 @@ const Demo = () => {
     }
   };
 
-  // --- Add Contact Handler ---
-  const handleAddContact = async () => {
-    if (!contactNumber.trim()) {
-      toast({
-        title: "Input Error",
-        description: "Please enter a valid phone number.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (!user) return;
-
-    setIsLoading(true); 
-
-    try {
-      // 👈 Pass user.id
-      await addTrustedContact(user.id, contactNumber);
-
-      toast({
-        title: "Contact Added",
-        description: `${contactNumber} has been added to your trusted circle.`,
-      });
-      setContactNumber(''); 
-    } catch (error: any) {
-        console.error("Add Contact Error:", error);
-        toast({
-            title: "Error",
-            description: "Failed to save contact. Please try again.",
-            variant: "destructive"
-        });
-    } finally {
-        setIsLoading(false); 
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -145,61 +166,50 @@ const Demo = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 gap-6">
             
             {/* Voice Recorder */}
             <Card className="border-border hover:border-accent transition-all">
               <CardHeader>
-                <CardTitle>Audio Monitor</CardTitle>
-                <CardDescription>Record background audio securely.</CardDescription>
+                <CardTitle>Client Monitoring</CardTitle>
+                <CardDescription>
+                  {isRecording ? "Listening for distress patterns..." : "Local audio monitoring for deployment."}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {isRecording && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Volume Level</span>
+                      <span>{(volume * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-200 ${volume > THRESHOLD ? 'bg-destructive' : 'bg-primary'}`}
+                        style={{ width: `${Math.min(volume * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
                 <Button
-                  onClick={handleRecording}
+                  onClick={handleRecordingToggle}
                   className={`w-full ${isRecording ? 'bg-destructive hover:bg-destructive/90' : ''}`}
                   disabled={isLoading}
                 >
                   {isLoading ? 'Processing...' : isRecording ? (
                     <>
                       <MicOff className="mr-2 h-4 w-4" />
-                      Stop Recording
+                      Stop & Save Recording
                     </>
                   ) : (
                     <>
                       <Mic className="mr-2 h-4 w-4" />
-                      Start Recording
+                      Start Mic Monitoring
                     </>
                   )}
                 </Button>
-              </CardContent>
-            </Card>
-
-            {/* Trusted Contacts */}
-            <Card className="border-border hover:border-accent transition-all">
-              <CardHeader>
-                <CardTitle>Trusted Contacts</CardTitle>
-                <CardDescription>Add numbers for emergency alerts.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex w-full max-w-sm items-center space-x-2">
-                  <Input 
-                    type="tel" 
-                    placeholder="+1 (555) 000-0000" 
-                    value={contactNumber}
-                    onChange={(e) => setContactNumber(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  <Button 
-                    type="submit" 
-                    onClick={handleAddContact}
-                    disabled={isLoading}
-                    variant="secondary"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Alerts will be sent via SMS & WhatsApp.
+                <p className="text-[10px] text-muted-foreground italic">
+                  *This works in cloud deployments as it uses your browser's microphone.
                 </p>
               </CardContent>
             </Card>
@@ -231,24 +241,15 @@ const Demo = () => {
               </CardContent>
             </Card>
 
-            {/* Emergency SOS */}
-            <Card className="border-border hover:border-accent transition-all md:col-span-2 lg:col-span-3">
-              <CardHeader>
-                <CardTitle className="text-destructive">Emergency Zone</CardTitle>
-                <CardDescription>Immediate action required.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  onClick={handleEmergency}
-                  variant="destructive"
-                  className="w-full shadow-glow h-16 text-lg"
-                  disabled={isLoading}
-                >
-                  <Phone className="mr-2 h-6 w-6" />
-                  {isLoading ? 'Sending SOS...' : 'ACTIVATE EMERGENCY SOS'}
-                </Button>
-              </CardContent>
-            </Card>
+          </div>
+
+          <div className="mt-8 p-6 bg-muted/30 rounded-lg border border-border">
+            <h3 className="text-lg font-semibold mb-2">Platform Update</h3>
+            <p className="text-sm text-muted-foreground">
+              We've updated VoiceGuard to use <strong>Client-Side Monitoring</strong>. This ensures that even when deployed to cloud platforms (like Hugging Face), the application can still access your microphone via the browser. 
+              <br /><br />
+              <em>Note: The SMS/SOS feature has been removed as it required external paid services. All emergency audio is still securely logged to your Evidence Locker.</em>
+            </p>
           </div>
         </div>
       </main>

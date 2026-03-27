@@ -9,12 +9,10 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import the new monitoring loop
-from monitoring_service import run_monitoring_loop
-
 # --- Local Utils Imports ---
-from utils.sos import sos
-from utils.database import get_or_create_user, update_user_contacts, save_evidence_metadata
+# from utils.sos import sos # Removed SMS feature
+from utils.database import get_or_create_user, save_evidence_metadata
+# from utils.database import update_user_contacts # Removed contacts management
 from utils.storage import upload_evidence_to_cloudinary
 from utils.chatbot import WomenSafetyChatbot
 
@@ -70,108 +68,10 @@ async def root():
     """Root endpoint to check if the API is running."""
     return {"message": "VoiceGuard API is running."}
 
-# -----------------------------
-# USER & CONTACT MANAGEMENT
-# -----------------------------
-@app.post("/add_contact")
-async def add_contact_route(data: ContactRequest):
-    """Adds a new emergency contact for a user."""
-    user = get_or_create_user(data.user_id)
-    if not user:
-        raise HTTPException(status_code=500, detail="Could not get or create user.")
-
-    # Add the new contact if it's not already in the list
-    if data.contact not in user.get("emergency_contacts", []):
-        new_contacts = user.get("emergency_contacts", []) + [data.contact]
-        update_user_contacts(data.user_id, new_contacts)
-        return {"status": "success", "message": "Contact added successfully."}
-    else:
-        return {"status": "info", "message": "Contact already exists."}
+# User contact management and SOS removed as requested.
 
 
-@app.post("/trigger_sos_for_user")
-async def trigger_sos_route(data: SosRequest):
-    """Triggers SOS alerts for all of a user's registered contacts."""
-    user = get_or_create_user(data.user_id)
-    if not user:
-        raise HTTPException(status_code=500, detail="Could not find user.")
-        
-    contacts = user.get("emergency_contacts", [])
-    if not contacts:
-        raise HTTPException(status_code=404, detail="No emergency contacts found for this user.")
-
-    sent_count = 0
-    for contact in contacts:
-        if sos(contact):
-            sent_count += 1
-    
-    if sent_count > 0:
-        return {"status": "success", "message": f"Successfully sent {sent_count} SOS message(s)."}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to send any SOS messages.")
-
-
-# -----------------------------
-# MONITORING SERVICE
-# -----------------------------
-@app.post("/start_monitoring")
-async def start_monitoring_route(data: MonitoringRequest):
-    """
-    Starts the background monitoring process if it's not already running.
-    """
-    global monitoring_process, stop_monitoring_event
-
-    user = get_or_create_user(data.user_id)
-    if not user:
-        raise HTTPException(status_code=500, detail="Could not get or create user.")
-
-    if monitoring_process and monitoring_process.is_alive():
-        logging.warning("Start monitoring called but process is already active.")
-        return {"status": "info", "message": "Monitoring is already active."}
-
-    logging.info(f"Received request to start monitoring for user: {data.user_id}")
-    
-    # Initialize multiprocessing event and process
-    stop_monitoring_event = multiprocessing.Event()
-    monitoring_process = multiprocessing.Process(
-        target=run_monitoring_loop,
-        args=(stop_monitoring_event, data.user_id,)
-    )
-    monitoring_process.start()
-
-    logging.info(f"Monitoring process started with PID: {monitoring_process.pid}")
-    return {"status": "success", "message": "Monitoring started."}
-
-# -----------------------------
-# STOP MONITORING
-# -----------------------------
-@app.post("/stop_monitoring")
-async def stop_monitoring_route():
-    """
-    Stops the background monitoring process if it is running.
-    """
-    global monitoring_process, stop_monitoring_event
-
-    if not monitoring_process or not monitoring_process.is_alive():
-        logging.warning("Stop monitoring called but no process is active.")
-        return {"status": "info", "message": "Monitoring is not active."}
-
-    logging.info("Received request to stop monitoring.")
-    
-    # Signal the process to stop and wait for it to terminate
-    stop_monitoring_event.set()
-    monitoring_process.join(timeout=10)  # Wait for 10 seconds
-
-    if monitoring_process.is_alive():
-        logging.error("Monitoring process failed to stop gracefully. Terminating.")
-        monitoring_process.terminate()
-        monitoring_process.join()
-
-    monitoring_process = None
-    stop_monitoring_event = None
-    
-    logging.info("Monitoring process has been stopped.")
-    return {"status": "success", "message": "Monitoring stopped."}
+# Background monitoring moved to client-side.
 
 # -----------------------------
 # EVIDENCE LOCKER
@@ -240,7 +140,8 @@ async def upload_evidence_route(user_id: str = Form(...), files: List[UploadFile
 # -----------------------------
 # CHATBOT INSTANCE & ROUTES
 # -----------------------------
-API_KEY = os.getenv("OPENAI_API_KEY")
+# Prioritize Google Gemini API Key
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 chatbot_instance = WomenSafetyChatbot(api_key=API_KEY)
 
 class ChatRequest(BaseModel):
