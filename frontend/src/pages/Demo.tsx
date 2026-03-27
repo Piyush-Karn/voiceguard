@@ -86,8 +86,12 @@ const Demo = () => {
         setVolume(rms);
 
         if (rms > THRESHOLD) {
-          // In a real app, we'd trigger a specific incident here.
-          // For the demo, we just show it's working.
+          // Provide visual feedback for the demo
+          toast({
+            title: "Threat Level Detected",
+            description: "VoiceGuard has detected high-intensity audio and is prioritizing your safety.",
+            variant: "destructive",
+          });
           console.log("High volume detected!");
         }
       }, MONITOR_INTERVAL);
@@ -244,12 +248,21 @@ const Demo = () => {
           </div>
 
           <div className="mt-8 p-6 bg-muted/30 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold mb-2">Platform Update</h3>
-            <p className="text-sm text-muted-foreground">
-              We've updated VoiceGuard to use <strong>Client-Side Monitoring</strong>. This ensures that even when deployed to cloud platforms (like Hugging Face), the application can still access your microphone via the browser. 
-              <br /><br />
-              <em>Note: The SMS/SOS feature has been removed as it required external paid services. All emergency audio is still securely logged to your Evidence Locker.</em>
-            </p>
+            <h3 className="text-lg font-semibold mb-2 text-primary">Privacy & Safety</h3>
+            <div className="grid md:grid-cols-3 gap-6 text-sm text-muted-foreground">
+              <div>
+                <h4 className="font-medium mb-1 text-foreground">Local Processing</h4>
+                <p>VoiceGuard uses client-side monitoring to process audio directly in your browser, ensuring your data never leaves your device unless a threat is confirmed.</p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1 text-foreground">Secure Evidence</h4>
+                <p>All recorded incidents are encrypted and stored in your private Evidence Locker, providing a tamper-proof record for legal or support services.</p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1 text-foreground">AI Support</h4>
+                <p>Our integrated AI chatbot provides immediate guidance and legal information, helping you navigate difficult situations with the right resources.</p>
+              </div>
+            </div>
           </div>
         </div>
       </main>
